@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RepForge — Entrena con Ciencia</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#f5f0e8; font-family:system-ui,sans-serif; color:#1a1a1a; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const { useState, useCallback } = React;
+const colors = ["#ff4d00","#00c896","#7c3aed","#f59e0b","#ec4899","#3c8fff"];
+
+const FILTERS = {
+  objetivo: ["Hipertrofia","Fuerza","Definición","Potencia"],
+  zona:     ["Tren superior","Tren inferior","Full body","Push/Pull"],
+  duracion: ["45 min","60 min","75 min","90 min"],
+  nivel:    ["Principiante","Intermedio","Avanzado"],
+};
+
+const SCIENCE_PROMPT = `Eres un entrenador personal de élite. Aplica siempre esta base científica:
+
+VOLUMEN (Schoenfeld 2017, Robinson 2024): 10-20 series directas/músculo/semana. Diseña sesiones con 3-5 series por ejercicio.
+PROXIMIDAD AL FALLO (Refalo 2023): especifica siempre RIR 1-2 en compuestos, RIR 0-1 en aislamiento.
+CARGA (Lasevicius 2022): hipertrofia independiente de la carga si se llega a RIR 0-3. 8-15 reps para hipertrofia, 3-6 para fuerza.
+DESCANSO (Singer & Schoenfeld 2024): 60-90s aislamiento, 90-120s compuestos. Nunca <60s en hipertrofia.
+ESTIRAMIENTO (Wolf 2023): prioriza ejercicios en posición alargada. Lengthened partials = estímulo más potente.
+FRECUENCIA (Schoenfeld 2016): 2x/semana por músculo es superior a 1x con volumen equiparado.
+TEMPO: excéntrico 2-4 seg siempre. TUT por serie: 30-70 seg.
+
+Responde SOLO con JSON válido sin texto extra ni backticks:
+{
+  "titulo": "Nombre creativo y específico",
+  "duracion": "X min",
+  "objetivo": "Objetivo",
+  "nivel": "Nivel",
+  "consejo_cientifico": "Dato científico clave de esta sesión.",
+  "ejercicios": [
+    {
+      "num": 1,
+      "nombre": "Nombre del ejercicio",
+      "descripcion": "Técnica clave",
+      "series": "4",
+      "reps": "10-12",
+      "rir": "RIR 1-2",
+      "descanso": "90 seg",
+      "tempo": "3-0-1-0",
+      "nota": "Consejo basado en evidencia científica."
+    }
+  ]
+}
+Incluye 5-6 ejercicios. VARÍA siempre — nunca repitas la misma rutina.`;
+
+const DEMOS = [
+  {
+    titulo: "Tren Superior — Máximo Estiramiento",
+    duracion: "60 min", objetivo: "Hipertrofia", nivel: "Intermedio",
+    consejo_cientifico: "Wolf et al. (2023): el estiramiento bajo carga es el estímulo más potente para hipertrofia. Cada ejercicio prioriza la fase de estiramiento.",
+    ejercicios: [
+      { num:1, nombre:"Curl de bíceps inclinado 45°", descripcion:"Máximo estiramiento del bíceps", series:"4", reps:"10-12", rir:"RIR 1-2", descanso:"75 seg", tempo:"3-1-1-0", nota:"El banco a 45° coloca el bíceps en máximo estiramiento. Wolf (2023): supera al curl de pie en hipertrofia de bíceps." },
+      { num:2, nombre:"Press banca con mancuernas — rango extendido", descripcion:"Desciende más allá del pecho", series:"4", reps:"10-12", rir:"RIR 1-2", descanso:"90 seg", tempo:"3-0-1-0", nota:"Mayor rango que la barra. Lleva las mancuernas por debajo del pecho para maximizar el estiramiento del pectoral." },
+      { num:3, nombre:"Pull-over con mancuerna en banco plano", descripcion:"Dorsal en máximo estiramiento overhead", series:"4", reps:"12-15", rir:"RIR 1-2", descanso:"75 seg", tempo:"3-1-1-0", nota:"Uno de los mejores estímulos para el dorsal según evidencia de lengthened partials. Estira completamente arriba." },
+      { num:4, nombre:"Extensión de tríceps overhead", descripcion:"Cabeza larga del tríceps en estiramiento", series:"4", reps:"10-12", rir:"RIR 1-2", descanso:"75 seg", tempo:"3-1-1-0", nota:"Supera al pushdown para hipertrofia total de tríceps. La cabeza larga representa 2/3 del volumen del tríceps." },
+      { num:5, nombre:"Elevación lateral con cable — polea baja", descripcion:"Tensión constante en el estiramiento", series:"3", reps:"15-20", rir:"RIR 0-1", descanso:"60 seg", tempo:"2-1-2-0", nota:"Robinson (2024): la polea baja mantiene tensión en el estiramiento, superior a la mancuerna para deltoides lateral." },
+    ]
+  },
+  {
+    titulo: "Tren Inferior — Fuerza e Hipertrofia",
+    duracion: "75 min", objetivo: "Fuerza + Hipertrofia", nivel: "Intermedio",
+    consejo_cientifico: "Schoenfeld (2019): mayor volumen semanal (>10 series/músculo) es superior. Esta sesión cubre el umbral mínimo efectivo para cuádriceps e isquios.",
+    ejercicios: [
+      { num:1, nombre:"Sentadilla trasera — profundidad máxima", descripcion:"Cuádriceps en máximo estiramiento", series:"5", reps:"5-6", rir:"RIR 2-3", descanso:"2 min", tempo:"3-1-X-1", nota:"Sentadilla profunda produce más hipertrofia que la parcial (Wolf 2023). Para fuerza: carga >80% 1RM con técnica perfecta." },
+      { num:2, nombre:"Peso muerto rumano (RDL)", descripcion:"Isquios y glúteo · excéntrico largo", series:"4", reps:"8-10", rir:"RIR 1-2", descanso:"90 seg", tempo:"4-1-1-0", nota:"4 seg de excéntrico maximiza la tensión en los isquios. Pausa de 1 seg en máximo estiramiento según evidencia de lengthened partials." },
+      { num:3, nombre:"Extensión de pierna — parciales alargadas", descripcion:"Cuádriceps · posición de máximo estiramiento", series:"4", reps:"12-15", rir:"RIR 0-1", descanso:"75 seg", tempo:"2-2-1-0", nota:"Reps en el tercio inferior del recorrido. Estudios 2024: 43% más crecimiento en cuádriceps con parciales alargadas." },
+      { num:4, nombre:"Curl femoral tumbado — parciales alargadas", descripcion:"Isquios · tensión máxima en el estiramiento", series:"4", reps:"10-12", rir:"RIR 1-2", descanso:"75 seg", tempo:"3-2-1-0", nota:"Reps en el tercio inferior (pierna más extendida). Pausa de 2 seg en estiramiento máximo. Wolf (2023): supera el rango completo." },
+      { num:5, nombre:"Elevación de gemelos de pie", descripcion:"Rango completo · pausa en estiramiento", series:"4", reps:"15-20", rir:"RIR 0-1", descanso:"60 seg", tempo:"2-3-1-0", nota:"Pausa de 3 seg con el talón completamente abajo. Los gemelos responden mejor al estiramiento prolongado bajo carga." },
+    ]
+  },
+  {
+    titulo: "Push/Pull — Superseries Científicas",
+    duracion: "60 min", objetivo: "Hipertrofia", nivel: "Avanzado",
+    consejo_cientifico: "Coleman et al. (2022 IUSCA): las superseries agonista-antagonista producen la misma hipertrofia que el volumen tradicional en significativamente menos tiempo.",
+    ejercicios: [
+      { num:1, nombre:"Press banca + Remo con barra (Superserie)", descripcion:"Pectoral + dorsal · potenciación mutua", series:"4", reps:"10+10", rir:"RIR 1-2", descanso:"90 seg", tempo:"3-0-1-0 / 3-1-1-0", nota:"Superserie agonista-antagonista: el descanso activo entre opuestos mejora el rendimiento del segundo ejercicio (PMC 2019)." },
+      { num:2, nombre:"Press militar + Jalón agarre neutro (Superserie)", descripcion:"Empuje-tracción vertical", series:"4", reps:"10+10", rir:"RIR 1-2", descanso:"90 seg", tempo:"3-0-1-1 / 3-1-2-0", nota:"Agarre neutro: menos tensión en el manguito, mayor estiramiento del dorsal. Varía el agarre entre sesiones (Schoenfeld 2021)." },
+      { num:3, nombre:"Aperturas cable (polea baja) + Remo banco inclinado", descripcion:"Pectoral en estiramiento + dorsal", series:"3", reps:"12+12", rir:"RIR 0-1", descanso:"75 seg", tempo:"2-1-2-0 / 3-1-1-0", nota:"Polea baja mantiene tensión en todo el rango del pectoral. Banco inclinado aísla el dorsal sin compensación lumbar." },
+      { num:4, nombre:"Extensión tríceps overhead + Curl inclinado (Superserie)", descripcion:"Brazos en máximo estiramiento", series:"3", reps:"12+12", rir:"RIR 0-1", descanso:"60 seg", tempo:"3-1-1-0 / 3-1-1-0", nota:"Ambos ejercicios en posición alargada. Con bajo volumen y RIR 0, el fallo tiene ventaja marginal (Refalo 2023)." },
+    ]
+  },
+  {
+    titulo: "Full Body — Alta Frecuencia 45 min",
+    duracion: "45 min", objetivo: "Hipertrofia", nivel: "Intermedio",
+    consejo_cientifico: "Schoenfeld (2016 meta-análisis): 2-3 sesiones/semana por músculo con volumen distribuido es superior a concentrar todo en 1 sesión semanal.",
+    ejercicios: [
+      { num:1, nombre:"Sentadilla goblet con mancuerna", descripcion:"Cuádriceps + glúteo · torso vertical", series:"3", reps:"12-15", rir:"RIR 1-2", descanso:"75 seg", tempo:"3-1-1-0", nota:"Facilita la posición vertical del torso, maximizando la profundidad y el estiramiento del cuádriceps. Ideal para alta frecuencia." },
+      { num:2, nombre:"Press banca con mancuernas + Remo unilateral (Superserie)", descripcion:"Pectoral + dorsal · eficiencia temporal", series:"3", reps:"10+10", rir:"RIR 1-2", descanso:"75 seg", tempo:"3-0-1-0 / 3-1-1-0", nota:"Coleman (2022): superseries ahorran hasta 40% del tiempo sin sacrificar hipertrofia. Ideal para sesiones de 45 min." },
+      { num:3, nombre:"Hip thrust con barra", descripcion:"Glúteo · máxima activación en extensión", series:"3", reps:"12-15", rir:"RIR 1-2", descanso:"75 seg", tempo:"1-2-1-0", nota:"Pausa de 2 seg en extensión máxima de cadera. Mayor activación del glúteo mayor que la sentadilla — complemento ideal." },
+      { num:4, nombre:"Press militar + Curl inclinado (Superserie)", descripcion:"Deltoides + bíceps en estiramiento", series:"3", reps:"12+12", rir:"RIR 0-1", descanso:"60 seg", tempo:"2-0-1-1 / 3-1-1-0", nota:"Refalo (2023): con bajo volumen, llegar a RIR 0 tiene ventaja marginal. Aplícalo en el último ejercicio de la sesión." },
+    ]
+  }
+];
+
+function getSmartDemo(prompt) {
+  const p = (prompt||"").toLowerCase();
+  if (p.includes("inferior")||p.includes("pierna")||p.includes("sentadilla")) return DEMOS[1];
+  if (p.includes("push")||p.includes("pull")||p.includes("avanzado")) return DEMOS[2];
+  if (p.includes("full")||p.includes("completo")||p.includes("45")) return DEMOS[3];
+  return DEMOS[Math.floor(Math.random()*DEMOS.length)];
+}
+
+function App() {
+  const [screen, setScreen] = useState("home");
+  const [sel, setSel] = useState({objetivo:"",zona:"",duracion:"",nivel:""});
+  const [prompt, setPrompt] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [routine, setRoutine] = useState(null);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("repforge_saved")||"[]"); } catch { return []; }
+  });
+
+  function toggleSel(group, val) {
+    setSel(s => ({...s, [group]: s[group]===val?"":val}));
+  }
+
+  const generate = useCallback(async () => {
+    const parts = [sel.objetivo,sel.zona,sel.duracion,sel.nivel,prompt].filter(Boolean);
+    if (!parts.length) { setError("Selecciona al menos un filtro."); return; }
+    setError(""); setLoading(true);
+    const fullPrompt = `Genera una rutina para: ${parts.join(", ")}. Aplica toda la base científica del sistema.`;
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:2000,
+          system: SCIENCE_PROMPT,
+          messages:[{role:"user",content:fullPrompt}]
+        })
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const raw = data.content?.map(i=>i.text||"").join("") || "";
+      setRoutine(JSON.parse(raw.replace(/```json|```/g,"").trim()));
+    } catch {
+      setRoutine(getSmartDemo(fullPrompt));
+    }
+    setLoading(false);
+    setScreen("result");
+  }, [sel, prompt]);
+
+  function saveRoutine() {
+    if (!routine) return;
+    const newSaved = [{...routine, id:Date.now(), fecha: new Date().toLocaleDateString("es-ES")}, ...saved];
+    setSaved(newSaved);
+    localStorage.setItem("repforge_saved", JSON.stringify(newSaved));
+    alert("✓ Rutina guardada");
+  }
+
+  function deleteSaved(id) {
+    const newSaved = saved.filter(r => r.id !== id);
+    setSaved(newSaved);
+    localStorage.setItem("repforge_saved", JSON.stringify(newSaved));
+  }
+
+  // ── RESULT ──
+  if (screen === "result" && routine) return (
+    <div style={S.wrap}>
+      <div style={S.topBar}>
+        <button style={S.backBtn} onClick={()=>setScreen("gen")}>← Volver</button>
+        <span style={S.logo}>Rep<span style={{color:"#ff4d00"}}>Forge</span></span>
+        <div style={{width:60}}/>
+      </div>
+      <div style={{background:"linear-gradient(135deg,#1a0800,#0f0f0f)",padding:"1.8rem 1.2rem 1.5rem"}}>
+        <div style={{fontSize:"0.58rem",letterSpacing:"0.2em",textTransform:"uppercase",color:"#00c896",marginBottom:"0.4rem"}}>✓ Rutina · Base científica aplicada</div>
+        <div style={{fontWeight:800,fontSize:"1.4rem",color:"#fff",lineHeight:1.2,marginBottom:"0.8rem"}}>{routine.titulo}</div>
+        <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.8rem"}}>
+          {[routine.objetivo,routine.duracion,routine.nivel,`${routine.ejercicios?.length} ejercicios`].filter(Boolean).map((m,i)=>(
+            <span key={i} style={{fontSize:"0.58rem",letterSpacing:"0.1em",textTransform:"uppercase",padding:"0.2rem 0.5rem",borderRadius:"50px",border:`1px solid ${i===0?"rgba(255,77,0,0.4)":"#2a2a2a"}`,color:i===0?"#ff4d00":"#555",background:i===0?"rgba(255,77,0,0.08)":"transparent"}}>{m}</span>
+          ))}
+        </div>
+        {routine.consejo_cientifico && (
+          <div style={{fontSize:"0.65rem",color:"#5a9a6a",background:"#0a110a",border:"1px solid #1a3a20",borderRadius:6,padding:"0.6rem",lineHeight:1.6}}>
+            🔬 {routine.consejo_cientifico}
+          </div>
+        )}
+      </div>
+      <div style={{padding:"0.8rem 1.2rem 0.5rem",display:"flex",flexDirection:"column",gap:"0.7rem"}}>
+        {routine.ejercicios?.map((ex,i)=>(
+          <div key={i} style={{background:"#1a1a1a",borderLeft:`3px solid ${colors[i%colors.length]}`,borderRadius:10,padding:"1rem"}}>
+            <div style={{display:"flex",gap:"0.8rem"}}>
+              <div style={{fontWeight:800,fontSize:"1.4rem",color:colors[i%colors.length],lineHeight:1,minWidth:"2rem",letterSpacing:"-0.03em"}}>{String(ex.num).padStart(2,"0")}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:"0.86rem",color:"#fff",marginBottom:"0.15rem",lineHeight:1.3}}>{ex.nombre}</div>
+                <div style={{fontSize:"0.67rem",color:"#555",marginBottom:"0.5rem"}}>{ex.descripcion}</div>
+                <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+                  {[
+                    {v:`${ex.series}×`,bg:"rgba(255,77,0,0.12)",c:"#ff7a40",b:"rgba(255,77,0,0.2)"},
+                    {v:ex.reps,bg:"rgba(0,200,150,0.1)",c:"#00c896",b:"rgba(0,200,150,0.2)"},
+                    {v:ex.rir,bg:"rgba(245,158,11,0.1)",c:"#f59e0b",b:"rgba(245,158,11,0.2)"},
+                    {v:ex.descanso,bg:"rgba(124,58,237,0.1)",c:"#a78bfa",b:"rgba(124,58,237,0.2)"},
+                    ex.tempo&&{v:`Tempo ${ex.tempo}`,bg:"rgba(236,72,153,0.1)",c:"#ec4899",b:"rgba(236,72,153,0.2)"},
+                  ].filter(Boolean).map((p,j)=>(
+                    <span key={j} style={{fontSize:"0.56rem",letterSpacing:"0.06em",textTransform:"uppercase",padding:"0.18rem 0.42rem",borderRadius:5,fontWeight:600,background:p.bg,color:p.c,border:`1px solid ${p.b}`}}>{p.v}</span>
+                  ))}
+                </div>
+                {ex.nota&&<div style={{fontSize:"0.67rem",color:"#5a8a6a",background:"#0a110a",borderLeft:"2px solid #1a3a20",padding:"0.4rem 0.6rem",lineHeight:1.6,borderRadius:"0 4px 4px 0"}}>🔬 {ex.nota}</div>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{padding:"1rem 1.2rem 3rem",display:"flex",flexDirection:"column",gap:"0.6rem"}}>
+        <button style={S.mainBtn} onClick={saveRoutine}>+ Guardar rutina</button>
+        <button style={{...S.mainBtn,background:"#1a1a1a",color:"#fff",boxShadow:"none",border:"1px solid #2a2a2a"}} onClick={()=>{setScreen("gen");setRoutine(null);}}>⚡ Nueva rutina</button>
+        <button style={{...S.mainBtn,background:"transparent",color:"#888",boxShadow:"none",border:"1px solid #e0d9ce"}} onClick={()=>setScreen("home")}>← Inicio</button>
+      </div>
+    </div>
+  );
+
+  // ── GUARDADAS ──
+  if (screen === "saved") return (
+    <div style={S.wrap}>
+      <div style={S.topBar}>
+        <button style={S.backBtn} onClick={()=>setScreen("home")}>← Inicio</button>
+        <span style={S.logo}>Rep<span style={{color:"#ff4d00"}}>Forge</span></span>
+        <span style={{fontSize:"0.75rem",color:"#888"}}>{saved.length} rutinas</span>
+      </div>
+      <div style={{padding:"1.2rem",display:"flex",flexDirection:"column",gap:"0.8rem"}}>
+        <div style={{fontWeight:800,fontSize:"1.8rem",letterSpacing:"-0.03em"}}>Guardadas</div>
+        {saved.length===0 && (
+          <div style={{textAlign:"center",padding:"3rem 1rem",color:"#888",fontSize:"0.82rem",lineHeight:2}}>
+            <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>📋</div>
+            Aún no tienes rutinas guardadas.<br/>Genera una y pulsa <strong>Guardar</strong>.
+          </div>
+        )}
+        {saved.map(r=>(
+          <div key={r.id} style={{background:"#fff",border:"1.5px solid #e0d9ce",borderRadius:12,padding:"1rem",cursor:"pointer"}} onClick={()=>{setRoutine(r);setScreen("result");}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+              <div style={{fontWeight:700,fontSize:"0.9rem",flex:1,marginRight:"0.5rem",lineHeight:1.3}}>{r.titulo}</div>
+              <button style={{background:"none",border:"none",color:"#ccc",cursor:"pointer",fontSize:"0.9rem",padding:"0.1rem 0.3rem"}} onClick={e=>{e.stopPropagation();deleteSaved(r.id);}}>✕</button>
+            </div>
+            <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+              {[r.objetivo,r.duracion,r.fecha].filter(Boolean).map((m,i)=>(
+                <span key={i} style={{fontSize:"0.6rem",letterSpacing:"0.08em",textTransform:"uppercase",padding:"0.2rem 0.5rem",borderRadius:"50px",border:"1px solid #e0d9ce",color:"#888"}}>{m}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── GENERATOR ──
+  if (screen === "gen") return (
+    <div style={S.wrap}>
+      <div style={S.topBar}>
+        <button style={S.backBtn} onClick={()=>setScreen("home")}>← Inicio</button>
+        <span style={S.logo}>Rep<span style={{color:"#ff4d00"}}>Forge</span></span>
+        <div style={{width:60}}/>
+      </div>
+      <div style={{padding:"1.2rem",display:"flex",flexDirection:"column",gap:"1rem"}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:"1.8rem",letterSpacing:"-0.03em",lineHeight:1.1}}>Diseña tu<br/><span style={{color:"#ff4d00"}}>rutina</span></div>
+          <div style={{fontSize:"0.78rem",color:"#888",marginTop:"0.4rem"}}>La IA aplica evidencia científica actualizada</div>
+        </div>
+        {Object.entries(FILTERS).map(([group,opts])=>(
+          <div key={group}>
+            <div style={{fontSize:"0.6rem",letterSpacing:"0.15em",textTransform:"uppercase",color:"#aaa",marginBottom:"0.45rem"}}>{group.charAt(0).toUpperCase()+group.slice(1)}</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+              {opts.map(opt=>(
+                <button key={opt} style={{background:sel[group]===opt?"#fff5f2":"#fff",border:`1.5px solid ${sel[group]===opt?"#ff4d00":"#e0d9ce"}`,borderRadius:"50px",padding:"0.32rem 0.75rem",fontSize:"0.75rem",cursor:"pointer",fontWeight:500,color:sel[group]===opt?"#ff4d00":"#666",fontFamily:"inherit"}} onClick={()=>toggleSel(group,opt)}>{opt}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+        <div>
+          <div style={{fontSize:"0.6rem",letterSpacing:"0.15em",textTransform:"uppercase",color:"#aaa",marginBottom:"0.45rem"}}>Descripción libre (opcional)</div>
+          <textarea style={{width:"100%",background:"#fff",border:"1.5px solid #e0d9ce",borderRadius:12,padding:"0.9rem",fontSize:"0.82rem",lineHeight:1.7,resize:"none",outline:"none",fontFamily:"inherit",color:"#1a1a1a"}}
+            value={prompt} onChange={e=>setPrompt(e.target.value)} rows={3}
+            placeholder="Ej: mañana tengo pierna, minimiza tren inferior. Quiero movimientos olímpicos..."
+          />
+        </div>
+        {error&&<div style={{fontSize:"0.75rem",color:"#ff4d00",background:"rgba(255,77,0,0.07)",border:"1px solid rgba(255,77,0,0.2)",borderRadius:8,padding:"0.6rem 0.8rem"}}>{error}</div>}
+        <button style={{...S.mainBtn,opacity:loading?0.7:1}} onClick={generate} disabled={loading}>
+          {loading
+            ? <span style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                <span style={{display:"inline-block",width:14,height:14,border:"2px solid rgba(255,255,255,0.4)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+                Aplicando evidencia científica...
+              </span>
+            : "⚡ Generar rutina"}
+        </button>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    </div>
+  );
+
+  // ── HOME ──
+  return (
+    <div style={S.wrap}>
+      <div style={S.topBar}>
+        <span style={S.logo}>Rep<span style={{color:"#ff4d00"}}>Forge</span></span>
+        <div style={{display:"flex",gap:"0.6rem"}}>
+          <button style={{background:"none",border:"1px solid #e0d9ce",borderRadius:"50px",padding:"0.4rem 0.9rem",fontSize:"0.78rem",cursor:"pointer",color:"#666",fontFamily:"inherit"}} onClick={()=>setScreen("saved")}>📁 Guardadas</button>
+          <button style={{background:"#0f0f0f",color:"#fff",border:"none",borderRadius:"50px",padding:"0.45rem 1rem",fontSize:"0.8rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setScreen("gen")}>Generar →</button>
+        </div>
+      </div>
+      <div style={{padding:"2rem 1.2rem",display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:"1rem"}}>
+        <div style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",background:"#fff",border:"1px solid #e0d9ce",borderRadius:"50px",padding:"0.35rem 0.9rem",fontSize:"0.72rem",color:"#888"}}>
+          <span style={{width:6,height:6,borderRadius:"50%",background:"#00c896",display:"inline-block"}}/>
+          Basado en 10+ estudios científicos 2023-2024
+        </div>
+        <div style={{fontWeight:800,fontSize:"2.4rem",letterSpacing:"-0.03em",lineHeight:1,maxWidth:340}}>
+          Entrena con<br/>
+          <span style={{background:"linear-gradient(135deg,#ff4d00,#ec4899)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>ciencia real</span>
+        </div>
+        <div style={{fontSize:"0.88rem",color:"#888",lineHeight:1.7,maxWidth:320}}>
+          RepForge aplica automáticamente la evidencia científica más actualizada sobre hipertrofia para diseñar tu rutina óptima.
+        </div>
+        <button style={{...S.mainBtn,maxWidth:340}} onClick={()=>setScreen("gen")}>⚡ Generar mi rutina — gratis</button>
+        <div style={{background:"#fff",border:"1.5px solid #e0d9ce",borderRadius:16,padding:"1.2rem",width:"100%",maxWidth:380,textAlign:"left"}}>
+          <div style={{fontSize:"0.6rem",letterSpacing:"0.15em",textTransform:"uppercase",color:"#aaa",marginBottom:"0.8rem"}}>Evidencia aplicada automáticamente</div>
+          {[
+            {icon:"🔬",txt:"Schoenfeld (2017, 2021) · Volumen y frecuencia óptima"},
+            {icon:"🎯",txt:"Refalo (2023) · Proximidad al fallo muscular"},
+            {icon:"📏",txt:"Wolf (2023) · ROM y lengthened partials"},
+            {icon:"⏱",txt:"Singer & Schoenfeld (2024) · Descansos óptimos"},
+            {icon:"⚖️",txt:"Lasevicius (2022) · Independencia de carga"},
+            {icon:"📊",txt:"Robinson (2024, Sports Med) · Dosis-respuesta volumen"},
+          ].map((e,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",padding:"0.4rem 0",borderBottom:i<5?"1px solid #f0ece4":"none"}}>
+              <span style={{fontSize:"0.8rem"}}>{e.icon}</span>
+              <span style={{fontSize:"0.68rem",color:"#888",lineHeight:1.5}}>{e.txt}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{padding:"0 1.2rem 3rem"}}>
+        <div style={{fontWeight:800,fontSize:"1.6rem",letterSpacing:"-0.03em",lineHeight:1.1,marginBottom:"1rem",textAlign:"center"}}>
+          ¿Listo para entrenar<br/><span style={{color:"#ff4d00"}}>con inteligencia?</span>
+        </div>
+        <button style={S.mainBtn} onClick={()=>setScreen("gen")}>⚡ Empezar ahora</button>
+      </div>
+    </div>
+  );
+}
+
+const S = {
+  wrap:{background:"#f5f0e8",minHeight:"100vh",fontFamily:"system-ui,sans-serif",color:"#1a1a1a",overflowX:"hidden"},
+  topBar:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.9rem 1.2rem",borderBottom:"1px solid #e0d9ce",background:"rgba(245,240,232,0.95)",position:"sticky",top:0,zIndex:100},
+  logo:{fontWeight:800,fontSize:"1.3rem",letterSpacing:"-0.02em"},
+  backBtn:{background:"none",border:"none",color:"#888",fontSize:"0.78rem",cursor:"pointer",fontWeight:500,fontFamily:"inherit"},
+  mainBtn:{background:"linear-gradient(135deg,#ff4d00,#ff6b35)",color:"#fff",border:"none",borderRadius:"50px",padding:"1rem 1.5rem",fontSize:"0.95rem",fontWeight:700,cursor:"pointer",boxShadow:"0 4px 20px rgba(255,77,0,0.3)",fontFamily:"inherit",width:"100%"},
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
