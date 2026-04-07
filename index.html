@@ -138,20 +138,15 @@ function App() {
     setError(""); setLoading(true);
     const fullPrompt = `Genera una rutina para: ${parts.join(", ")}. Aplica toda la base científica del sistema.`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/generate", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-          model:"claude-sonnet-4-20250514",
-          max_tokens:2000,
-          system: SCIENCE_PROMPT,
-          messages:[{role:"user",content:fullPrompt}]
-        })
+        body: JSON.stringify({ prompt: fullPrompt })
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      const raw = data.content?.map(i=>i.text||"").join("") || "";
-      setRoutine(JSON.parse(raw.replace(/```json|```/g,"").trim()));
+      if (data.error) throw new Error(data.error);
+      setRoutine(data);
     } catch {
       setRoutine(getSmartDemo(fullPrompt));
     }
